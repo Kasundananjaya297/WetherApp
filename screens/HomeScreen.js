@@ -1,6 +1,6 @@
 import { View, Text, SafeAreaView, Image, TextInput, TouchableOpacity, ScrollView} from 'react-native';
 import Modal from "react-native-modal";
-import React, { useState } from 'react'
+import React, {useEffect, useState} from 'react'
 import { StatusBar } from 'expo-status-bar'
 import { Theme } from '../Theme'
 
@@ -12,12 +12,15 @@ import { faThermometer3 } from '@fortawesome/free-solid-svg-icons/faThermometer3
 import {CalendarDaysIcon} from 'react-native-heroicons/outline'
 import {ClockIcon} from 'react-native-heroicons/outline'
 import DateTimePickerModal from "react-native-modal-datetime-picker";
+import {debounce} from "lodash";
+import {callAutoComplete} from '../API/api'
+
 
 
 
 export default function HomeScreen() {
   const [showSearch,toggleSearch]=useState(false);
-  const [locations,setLocations]=useState([1,2,3,4]);
+  const [locations,setLocations]=useState([]);
   const indexArray24H = [];
   var value=0.2;
   const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
@@ -25,9 +28,11 @@ export default function HomeScreen() {
   const[seletetedTime,setTime]=useState((new Date()).getHours());
   const[selectedMonth,setSelectedMonth]=useState(new Date().toLocaleString('default', { month: 'short' }));
   const[seletedDate,setSeletedDate] = useState(new Date().toLocaleString('default', { day: 'numeric' }));
+  const [enteredLocation,setEnteredLocation] = useState('');
   const showDatePicker = () => {
     setDatePickerVisibility(true);
   };
+  const [completedLocation,setCompletedLocation] = useState([]);
 
   const hideDatePicker = () => {
     setDatePickerVisibility(false);
@@ -55,6 +60,7 @@ export default function HomeScreen() {
       setTime(hours)
       hideTimePicker();
   };
+
   
   function generateTemperatureData() {
     for (let i = 0; i <= 23; i++) {
@@ -65,9 +71,23 @@ export default function HomeScreen() {
     return indexArray24H;
   }
   generateTemperatureData();
-  const handleLocation = (loc)=>{
-    console.log('Location: ',loc);
-  }
+
+    const handleLocation = debounce(async (loc) => {
+        console.log(loc);
+        setEnteredLocation(loc);
+    }, 400);
+    useEffect(() => {
+            const fetch = async () => {
+                try {
+                    console.log("Entered Loation"+enteredLocation);
+                    const response = await callAutoComplete(enteredLocation);
+                    setLocations(response?.data);
+                }catch (error) {
+                    console.error("An error occurred:", error);
+                }
+            }
+            fetch()
+    }, [enteredLocation]);
   return (
    <View className="flex-1 relative">
     <StatusBar style="light"/>
@@ -82,6 +102,7 @@ export default function HomeScreen() {
               placeholder="Enter city for weather forecasting..."
               placeholderTextColor="lightgray"
               className="pl-10 h-10 flex-base text-sm flex-1 text-white"
+              onChangeText={(text)=>{handleLocation(text)}}
             />
             ) : null
           }
@@ -95,18 +116,18 @@ export default function HomeScreen() {
           
         </View> 
             {
-              locations.length>0  && showSearch?(
+              locations?.length>0  && showSearch?(
                 <View className="absolute w-full bg-gray-300 top-16 rounded-3xl">
                   {
-                    locations.map((loc,index)=>{
-                      var showBorder = index +1 != locations.length;
+                    locations?.map((loc,index)=>{
+                      var showBorder = index +1 != locations?.length;
                       var borderClass = showBorder?'border-b-2 border-b-gray-400':'';
                       return (
                         <TouchableOpacity
                         key={index}
                         className={"flex-row items-center border-0 p-3 px-4 mb-1 "+borderClass}>
                           <MapPinIcon size="22" color="gray"/>
-                          <Text className="text-base text-black ml-4">Athurugiriya, Sri Lanka</Text>
+                          <Text className="text-base text-black ml-4">{loc?.name}, {loc?.country}</Text>
                         </TouchableOpacity>
                       )
                     })
