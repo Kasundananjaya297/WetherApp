@@ -1,9 +1,9 @@
-import { View, Text, SafeAreaView, Image, TextInput, TouchableOpacity, ScrollView} from 'react-native';
+import { View, Text, SafeAreaView, Image, TextInput, TouchableOpacity, ScrollView,ActivityIndicator,Alert} from 'react-native';
 import Modal from "react-native-modal";
 import React, {useEffect, useState} from 'react'
 import { StatusBar } from 'expo-status-bar'
 import { Theme } from '../Theme'
-
+import * as Location from 'expo-location';
 import {MagnifyingGlassIcon} from 'react-native-heroicons/outline'
 import {MapPinIcon} from 'react-native-heroicons/solid'
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome'
@@ -13,7 +13,7 @@ import {CalendarDaysIcon} from 'react-native-heroicons/outline'
 import {ClockIcon} from 'react-native-heroicons/outline'
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import {debounce} from "lodash";
-import {callAutoComplete} from '../API/api'
+import {callAutoComplete, selectedCity} from '../API/api'
 
 
 
@@ -29,6 +29,11 @@ export default function HomeScreen() {
   const[selectedMonth,setSelectedMonth]=useState(new Date().toLocaleString('default', { month: 'short' }));
   const[seletedDate,setSeletedDate] = useState(new Date().toLocaleString('default', { day: 'numeric' }));
   const [enteredLocation,setEnteredLocation] = useState('');
+  const [selectedCityFromClick,setSelectedCity] = useState("Athurugiriya");
+  const [weatherCondition,setWeatherCondition] = useState([]);
+  const [forcastData,setForcastData] = useState([]);
+  const [latitude,setLatitude] = useState(0);
+  const [longitude,setLongitude] = useState(0);
   const showDatePicker = () => {
     setDatePickerVisibility(true);
   };
@@ -40,7 +45,8 @@ export default function HomeScreen() {
 
   const handleConfirm = (date) => {
     console.log("A date has been picked: ", date);
-    selectedMonth();
+    setSelectedMonth(date.toLocaleString('default', { month: 'short' }));
+    setSeletedDate(date.toLocaleString('default', { day: 'numeric' }));
     hideDatePicker();
   };
   const showTimePicker = () => {
@@ -57,44 +63,105 @@ export default function HomeScreen() {
       const selectedHour = hours < 10 ? `0${hours}` : `${hours}`;
       const selectedMinutes = minutes < 10 ? `0${minutes}` : `${minutes}`;
       console.log("A time has been picked: ", `${selectedHour}:${selectedMinutes}`);
-      setTime(hours)
+      setTime(new Date().getHours());
       hideTimePicker();
   };
+    const fetchLocation = async () => {
+        try {
+            let { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                console.log('Permission to access location was denied');
+                Alert.alert('Permission to access', 'Permission to access location was denied', [
+                    {
+                        text: 'Cancel',
+                        onPress: () => console.log('Cancel Pressed'),
+                        style: 'cancel',
+                    },
+                    {
+                        text: 'Retry',
+                        onPress: () => fetchLocation(),
+                    },
+                ]);
+                return;
+            }
+            let location = await Location.getCurrentPositionAsync({});
+            setLatitude(location.coords.latitude);
+            setLongitude(location.coords.longitude);
+            console.log("Current location:", location.coords.latitude, location.coords.longitude);
+        } catch (error) {
+            console.error("An error occurred:", error);
+        }
+    };
 
-  
+    useEffect(() => {
+        fetchLocation();
+    }, [forcastData]);
+    useEffect(() => {
+        const fetch = async() =>{
+            try{
+                console.log("Selected Location",selectedCityFromClick);
+                const response = await selectedCity(1,selectedCityFromClick);
+                setWeatherCondition(response?.data)
+                setForcastData(response?.data?.forecast?.forecastday)
+                setLocations([]);
+            }catch (error) {
+                console.error("An error occurred:", error);
+            }
+        }
+        if(selectedCityFromClick?.length>0){
+            fetch()
+        }
+
+    }, [selectedCityFromClick]);
+    useEffect(() => {
+        console.log("Weather Condition",weatherCondition);
+    }, [weatherCondition]);
+
+  const handleLocation = debounce((text) => {
+      setEnteredLocation(text);
+  }, 400);
+
   function generateTemperatureData() {
-    for (let i = 0; i <= 23; i++) {
+      const currentTime = new Date().getHours();
+    for (let i = currentTime; i <= 23; i++) {
       const time = i < 10 ? '0' + i : '' + i;
-      const temperature = 30;
-      indexArray24H.push({ time, temperature });
+      console.log("forecast_data",forcastData)
+      indexArray24H.push({ time, temperature: 30});
     }
     return indexArray24H;
   }
   generateTemperatureData();
 
-    const handleLocation = debounce(async (loc) => {
-        console.log(loc);
-        setEnteredLocation(loc);
-    }, 400);
     useEffect(() => {
             const fetch = async () => {
                 try {
-                    console.log("Entered Loation"+enteredLocation);
                     const response = await callAutoComplete(enteredLocation);
                     setLocations(response?.data);
+                    setForcastData(response?.data?.forecast?.forecastday)
                 }catch (error) {
                     console.error("An error occurred:", error);
                 }
             }
+        if(enteredLocation?.length>0){
             fetch()
+        }
     }, [enteredLocation]);
+
+    if(!weatherCondition?.current){
+        return (
+            <View className="flex-1 justify-center items-center">
+                <Image blurRadius={0.9} source={require('../assets/Backgroun.png')} className="absolute h-full w-full"/>
+                <ActivityIndicator size="large" color="#FFFFFF" />
+            </View>
+        )
+    }
   return (
    <View className="flex-1 relative">
     <StatusBar style="light"/>
     <Image blurRadius={0.9} source={require('../assets/Backgroun.png')} className="absolute h-full w-full"/>
     <SafeAreaView className="flex flex-1">
       <View style={{height:'7%'}} className="mx-6 relative z-50 mt-1" >
-        <View className="flex-row justify-end items-center rounded-full"   
+        <View className="flex-row justify-end items-center rounded-full"
         style={{backgroundColor:showSearch? Theme.white(0.2):Theme.white(0)}}>
           {
             showSearch ? (
@@ -113,8 +180,8 @@ export default function HomeScreen() {
           >
           <MagnifyingGlassIcon size="25" color='white'/>
           </TouchableOpacity>
-          
-        </View> 
+
+        </View>
             {
               locations?.length>0  && showSearch?(
                 <View className="absolute w-full bg-gray-300 top-16 rounded-3xl">
@@ -125,7 +192,9 @@ export default function HomeScreen() {
                       return (
                         <TouchableOpacity
                         key={index}
-                        className={"flex-row items-center border-0 p-3 px-4 mb-1 "+borderClass}>
+                        className={"flex-row items-center border-0 p-3 px-4 mb-1 "+borderClass}
+                        onPress={()=>{setSelectedCity(loc?.name);toggleSearch(false)}}
+                        >
                           <MapPinIcon size="22" color="gray"/>
                           <Text className="text-base text-black ml-4">{loc?.name}, {loc?.country}</Text>
                         </TouchableOpacity>
@@ -140,26 +209,26 @@ export default function HomeScreen() {
               <Image source={require('../assets/images/partlycloudy.png')} className="h-40 w-40"/>
               <View className="space-y-2 items-center">
                   <View className="space-y-0 items-center">
-                      <Text className="text-white text-center  text-7xl ml-6 mb-0">30&#176;</Text>
-                      <Text className="text-white text-center text-3xl mb-1">Athurugiriya</Text>
+                      <Text className="text-white text-center  text-7xl ml-6 mb-0">{weatherCondition?.current?.temp_c}&#176;</Text>
+                      <Text className="text-white text-center text-3xl mb-1">{selectedCityFromClick}</Text>
                       <View className="flex-row pl-1 items-center">
                       <FontAwesomeIcon icon={ faThermometer0 } color='white' size={22}/>
-                          <Text className="text-white text-center text-xl pr-6 pl-3" >Min.:31&#176;</Text>
+                          <Text className="text-white text-center text-xl pr-6 pl-3" >Min.:{weatherCondition?.current?.dewpoint_c}&#176;</Text>
                           <FontAwesomeIcon icon={ faThermometer3 } color='white' size={22}/>
-                          <Text className="text-white text-center text-xl pl-3">Max.:25&#176;</Text>
+                          <Text className="text-white text-center text-xl pl-3">Max.:{weatherCondition?.current?.heatindex_c}&#176;</Text>
                     </View>
                   </View>
-              </View> 
+              </View>
            </View>
            <View className="mx-1 relative z-50 mt-2 items-center">
-           <View className="flex-row justify-start items-center rounded-full"   
+           <View className="flex-row justify-start items-center rounded-full"
             style={{backgroundColor: Theme.white(0.2)}}>
               <Image source={require('../assets/icons/rains.png')}  className="h-6 w-6 ml-8 mt-3 mb-3 mr-3" />
-              <Text className=" text-white text-xl items-center font-bold mr-2">6%</Text>
+              <Text className=" text-white text-xl items-center font-bold mr-2">{weatherCondition?.current?.humidity}%</Text>
               <Image source={require('../assets/icons/Hummidity.png')}  className="h-6 w-6 ml-4 m-3" />
-              <Text className=" text-white text-xl items-center font-bold mr-2">80%</Text>
+              <Text className=" text-white text-xl items-center font-bold mr-2">{weatherCondition?.current?.humidity}%</Text>
               <Image source={require('../assets/icons/wind.png')}  className="h-6 w-6 ml-4 m-3" />
-              <Text className=" text-white text-xl items-center font-bold mr-6">23km/h</Text>
+              <Text className=" text-white text-xl items-center font-bold mr-6">{weatherCondition?.current?.vis_km}km/h</Text>
         </View>
         </View>
 
@@ -167,7 +236,7 @@ export default function HomeScreen() {
             <View className="rounded-3xl pt-1" style={{ backgroundColor: Theme.white(0.2) }}>
               <View className="flex-row justify-between mt-2">
                 <View className="flex-row items-center mx-4">
-                <TouchableOpacity onPress={() => setDatePickerVisibility(true)} className="ml-1 rounded-full p-1" 
+                <TouchableOpacity onPress={() => setDatePickerVisibility(true)} className="ml-1 rounded-full p-1"
               style={{ backgroundColor: Theme.white(0.3)}}>
                 <CalendarDaysIcon color="white" size={22}/>
                 {/*calenader*/}
@@ -181,7 +250,7 @@ export default function HomeScreen() {
                 />
                 </View>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setTimePickerVisibility(true)} className="ml-3 rounded-full p-1" 
+              <TouchableOpacity onPress={() => setTimePickerVisibility(true)} className="ml-3 rounded-full p-1"
               style={{ backgroundColor: Theme.white(0.3) }} >
                 <ClockIcon color="white" size={22} />
                 {/*Time Selector*/}
